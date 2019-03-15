@@ -52,6 +52,7 @@ def createModel(layers):
     return model
 
 def generateFirstPopulation(count):
+    print("Generating {} units in the first Generation".format(count))
     models = np.array([])
     for i in range(count):
         layers = np.array([])
@@ -69,7 +70,7 @@ def runGeneration(models):
         (result, moveCount) = playGame(model)
         print("Game Result: {} movecount: {}".format(result, moveCount))
         score = calcScore(result, moveCount)
-        np.append(results, [(score, model)])
+        results = np.append(results, [[score, model]])
 
     return results
 
@@ -81,12 +82,13 @@ def calcScore(result, moveCount):
 
 
 def optimize():
-    population = generateFirstPopulation(50)
+    population = generateFirstPopulation(10)
     for i in range(6):
+        print("Generation: {}".format(i))
         scoredResult = runGeneration(population)
-        #scoredResult = np.sort(scoredResult, axis=0)
-        scoredResult.sort(key=lambda x: x[0])
+        print(scoredResult.shape)
+        scoredResult = np.sort(scoredResult, axis=0)
         #kill weakest 50%
-        scoredResult = np.take(scoredResult, [0,scoredResult.shape[0] * 0.5])
+        population = np.take(scoredResult, range(0, int(scoredResult.shape[0]*0.5)), axis=1)
 
 optimize()
