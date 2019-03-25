@@ -24,8 +24,11 @@ def cellToOneHot(cell):
         return 0
 
 
+gamegrid = GameGrid()
+
 def playGame(unit):
-    gamegrid = GameGrid()
+    gamegrid.init_matrix()
+    gamegrid.update_grid_cells()
 
     moves = ['up', 'down', 'left', 'right']
 
@@ -51,10 +54,6 @@ def playGame(unit):
             if res == 'nomove':
                 indices = np.delete(indices, 0)
 
-
-        if res != 'notover':
-            gamegrid.close()
-
         if res == 'win' or res == 'lose':
             unit.score = calcScore(res, gamegrid.history_matrixs)
             return (res, unit.score)
@@ -63,7 +62,7 @@ def calcScore(result, history_matrixs):
     move_count = len(history_matrixs)
     max_cell = max([max(sub) for sub in history_matrixs[move_count-1]])
 
-    s = move_count + (max_cell*0.7)
+    s = max_cell
     if result == 'win':
         s += 1000
     return s
@@ -71,10 +70,10 @@ def calcScore(result, history_matrixs):
 def createModel(layers):
     model = Sequential()
     model.add(Dense(layers[0], activation='relu', kernel_initializer='random_uniform', bias_initializer='zeros', input_shape=(16*12,)))
-    model.add(Dropout(0.2))
+    model.add(Dropout(rate=0.9))
     for layer in layers[1:]:
         model.add(Dense(layer, activation='relu', kernel_initializer='random_uniform', bias_initializer='zeros'))
-        model.add(Dropout(0.2))
+        model.add(Dropout(rate=0.9))
 
     model.add(Dense(4, activation='softmax', kernel_initializer='random_uniform', bias_initializer='zeros'))
 
@@ -101,42 +100,50 @@ def generateFirstPopulation(count):
 def runGeneration(units):
     for a,unit in enumerate(units):
         total_score = 0
-        for i in range(3):
+        for i in range(2):
             (result, score) = playGame(unit)
             total_score += score
-        unit.score = total_score / 3.0
+        unit.score = total_score / 2.0
         print("Unit {} Game Result: {} mean_score: {}".format(a, result, unit.score))
 
 def breed(mum, dad):
-    child = copy.copy(mum)
-    for j,child_layer in enumerate(child.model.layers):
+    offspring = copy.copy(mum)
+    crossover_ratio = random.random()
+    for j,offspring_layer in enumerate(offspring.model.layers):
         #new_weights_for_layer = []
 
-        for k,child_weight_array in enumerate(child_layer.get_weights()):
+        for k,offspring_weight_array in enumerate(offspring_layer.get_weights()):
             dad_weight_array = dad.model.layers[j].get_weights()[k]
 
-            assert(dad_weight_array.shape == child_weight_array.shape)
+            assert(dad_weight_array.shape == offspring_weight_array.shape)
 
-            save_shape = child_weight_array.shape
+            save_shape = offspring_weight_array.shape
 
-            child_weight_array.reshape(-1)
+            offspring_weight_array.reshape(-1)
             dad_weight_array.reshape(-1)
 
-            for i,w in enumerate(child_weight_array):
-                ratio = random.uniform(0,0.5)
-                child_weight_array[i] = child_weight_array[i] * ratio + dad_weight_array[i] * (1-ratio)
+            for i,w in enumerate(offspring_weight_array):
+                offspring_weight_array[i] = offspring_weight_array[i] * crossover_ratio + dad_weight_array[i] * (1-crossover_ratio)
 
-            child_weight_array.reshape(save_shape)
+            offspring_weight_array.reshape(save_shape)
             dad_weight_array.reshape(save_shape)
+    
+    return offspring
+
+def mutate(unit, mutation_chance):
+    for j,layer in enumerate(unit.model.layers):
+        for k,weight_array in enumerate(layer.get_weights()):
+            save_shape = weight_array.shape
+
+            weight_array.reshape(-1)
             
-            #new_weights_for_layer.append(flattened.reshape(save_shape))
-        #child.model.layers[j].set_weights(new_weights_for_layer)
-
-    return child
-
-
-
-
+            for i,w in enumerate(weight_array):
+                if (random.random() < mutation_chance):
+                    weight_array[i] += random.random() * 6.0 - 3.0
+            
+            weight_array.reshape(save_shape)
+    
+    return unit
 
 def optimize():
     population = generateFirstPopulation(20)
@@ -146,18 +153,21 @@ def optimize():
 
         sortByScore = sorted(population, key=lambda x: x.score, reverse=True)
         
-        numToKeep = int(len(sortByScore) * 0.2)
-        numChildren = int(len(sortByScore) * 0.8)
+        numToKeep = int(len(sortByScore) * 0.1)
+        numOffspring = int(len(sortByScore) * 0.9)
+
+        #only keep the best
         population = np.array(sortByScore[:numToKeep])
 
-        for _ in range(numChildren):
+        #produce offspring
+        for _ in range(numOffspring):
             mum = np.random.choice(population)
             dad = np.random.choice(population)
 
-            child = breed(mum, dad)
-            population = np.append(population, [child])
-        
-        #kill weakest 50%
-        #population = np.take(scoredResult, range(0, int(scoredResult.shape[0]*0.5)), axis=1)
+            offspring = breed(mum, dad)
+            mutate(offspring, 0.1)
+
+            population = np.append(population, [offspring])
 
 optimize()
+gamegrid.close()
