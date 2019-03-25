@@ -58,7 +58,7 @@ def playGame(unit):
         if res == 'win' or res == 'lose':
             max_cell = max([max(sub) for sub in gamegrid.history_matrixs[len(gamegrid.history_matrixs)-1]])
             unit.score = calcScore(res, gamegrid.history_matrixs, max_cell)
-            unit.max_cell = max_cell
+            unit.max_cell = max(unit.max_cell, max_cell)
             return (res, unit.score)
 
 def createModel(layers):
@@ -93,6 +93,7 @@ def generateFirstPopulation(count):
 
 def runGeneration(units, num_games):
     for a,unit in enumerate(units):
+        unit.max_cell = 0
         total_score = 0
         for i in range(num_games):
             (result, score) = playGame(unit)
@@ -132,30 +133,33 @@ def breed(mum, dad):
     
     return offspring
 
-def mutate(unit, mutation_chance):
+def mutate(unit):
     for j,layer in enumerate(unit.model.layers):
         for k,weight_array in enumerate(layer.get_weights()):
             save_shape = weight_array.shape
 
             weight_array.reshape(-1)
+
+            # mutation chance is random in the bounds of [almost healthy, full retard)
+            mutation_chance = random.uniform(0.05, 0.6)
             
             for i,w in enumerate(weight_array):
                 if (random.random() < mutation_chance):
-                    weight_array[i] += random.random() * 6.0 - 3.0
+                    weight_array[i] += random.uniform(-1, +1)
             
             weight_array.reshape(save_shape)
     
     return unit
 
 def optimize():
-    population = generateFirstPopulation(15)
+    population = generateFirstPopulation(25)
     for i in range(10):
         print("Generation: {}".format(i))
         runGeneration(population, 3)
 
         sortByScore = sorted(population, key=lambda x: x.score, reverse=True)
         
-        keep_rate = 0.3
+        keep_rate = 0.5
         numToKeep = int(len(sortByScore) * keep_rate)
         numOffspring = int(len(population) * (1 - keep_rate))
 
@@ -169,9 +173,7 @@ def optimize():
 
             offspring = breed(mum, dad)
 
-            # mutation chance is random in the bounds of [almost healthy, full retard)
-            mutation_chance = random.uniform(0.1, 0.7)
-            mutate(offspring, mutation_chance)
+            mutate(offspring)
 
             population = np.append(population, [offspring])
 
