@@ -61,14 +61,6 @@ def playGame(unit):
             unit.max_cell = max_cell
             return (res, unit.score)
 
-def calcScore(result, history_matrixs, max_cell):
-    move_count = len(history_matrixs)
-
-    s = move_count * max_cell
-    if result == 'win':
-        s += 1000
-    return s
-
 def createModel(layers):
     model = Sequential()
     model.add(Dense(layers[0], activation='relu', kernel_initializer='random_uniform', bias_initializer='zeros', input_shape=(16*12,)))
@@ -99,14 +91,22 @@ def generateFirstPopulation(count):
         units = np.append(units, [unit])
     return units
 
-def runGeneration(units):
+def runGeneration(units, num_games):
     for a,unit in enumerate(units):
         total_score = 0
-        for i in range(2):
+        for i in range(num_games):
             (result, score) = playGame(unit)
             total_score += score
-        unit.score = total_score / 2.0
+        unit.score = total_score / num_games
         print("Unit {} Game Result: {} mean_score: {}, max_cell:{}".format(a, result, unit.score, unit.max_cell))
+
+def calcScore(result, history_matrixs, max_cell):
+    move_count = len(history_matrixs)
+
+    s = move_count * math.sqrt(max_cell)
+    if result == 'win':
+        s += 1000
+    return s
 
 def breed(mum, dad):
     offspring = copy.copy(mum)
@@ -148,15 +148,16 @@ def mutate(unit, mutation_chance):
     return unit
 
 def optimize():
-    population = generateFirstPopulation(20)
+    population = generateFirstPopulation(15)
     for i in range(10):
         print("Generation: {}".format(i))
-        runGeneration(population)
+        runGeneration(population, 3)
 
         sortByScore = sorted(population, key=lambda x: x.score, reverse=True)
         
-        numToKeep = int(len(sortByScore) * 0.1)
-        numOffspring = int(len(sortByScore) * 0.9)
+        keep_rate = 0.3
+        numToKeep = int(len(sortByScore) * keep_rate)
+        numOffspring = int(len(population) * (1 - keep_rate))
 
         #only keep the best
         population = np.array(sortByScore[:numToKeep])
@@ -167,7 +168,10 @@ def optimize():
             dad = np.random.choice(population)
 
             offspring = breed(mum, dad)
-            mutate(offspring, 0.1)
+
+            # mutation chance is random in the bounds of [almost healthy, full retard)
+            mutation_chance = random.uniform(0.1, 0.7)
+            mutate(offspring, mutation_chance)
 
             population = np.append(population, [offspring])
 
