@@ -13,9 +13,10 @@ from keras.layers import Dense, Dropout
 
 class Unit(object):
     score = 0
+    max_cell = 0
     model = None
 
-    def __str__(object): return 'Unit({})'.format(score)
+    def __str__(object): return 'Unit(score: {}, max_cell: {})'.format(score, max_cell)
 
 def cellToOneHot(cell):
     if (cell > 0):
@@ -55,14 +56,15 @@ def playGame(unit):
                 indices = np.delete(indices, 0)
 
         if res == 'win' or res == 'lose':
-            unit.score = calcScore(res, gamegrid.history_matrixs)
+            max_cell = max([max(sub) for sub in gamegrid.history_matrixs[len(gamegrid.history_matrixs)-1]])
+            unit.score = calcScore(res, gamegrid.history_matrixs, max_cell)
+            unit.max_cell = max_cell
             return (res, unit.score)
 
-def calcScore(result, history_matrixs):
+def calcScore(result, history_matrixs, max_cell):
     move_count = len(history_matrixs)
-    max_cell = max([max(sub) for sub in history_matrixs[move_count-1]])
 
-    s = max_cell
+    s = move_count * max_cell
     if result == 'win':
         s += 1000
     return s
@@ -70,10 +72,10 @@ def calcScore(result, history_matrixs):
 def createModel(layers):
     model = Sequential()
     model.add(Dense(layers[0], activation='relu', kernel_initializer='random_uniform', bias_initializer='zeros', input_shape=(16*12,)))
-    model.add(Dropout(rate=0.9))
+    #model.add(Dropout(rate=0.9))
     for layer in layers[1:]:
         model.add(Dense(layer, activation='relu', kernel_initializer='random_uniform', bias_initializer='zeros'))
-        model.add(Dropout(rate=0.9))
+        #model.add(Dropout(rate=0.9))
 
     model.add(Dense(4, activation='softmax', kernel_initializer='random_uniform', bias_initializer='zeros'))
 
@@ -104,7 +106,7 @@ def runGeneration(units):
             (result, score) = playGame(unit)
             total_score += score
         unit.score = total_score / 2.0
-        print("Unit {} Game Result: {} mean_score: {}".format(a, result, unit.score))
+        print("Unit {} Game Result: {} mean_score: {}, max_cell:{}".format(a, result, unit.score, unit.max_cell))
 
 def breed(mum, dad):
     offspring = copy.copy(mum)
