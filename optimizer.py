@@ -8,9 +8,9 @@ import math
 
 import numpy as np
 
-from keras.models import Sequential
-from keras.layers import Dense, Dropout
-from keras.initializers import RandomUniform
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout
+from tensorflow.keras.initializers import RandomUniform
 
 class Unit(object):
     score = 0
