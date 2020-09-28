@@ -1,5 +1,5 @@
 
-from puzzle import GameGrid
+from puzzle import *
 import logic
 import random
 import time
@@ -19,56 +19,12 @@ class Unit(object):
 
     def __str__(self): return 'Unit(score: {}, max_cell: {})'.format(score, max_cell)
 
-def cellToIndex(cell):
-    if (cell > 0):
-        return int(math.log(cell, 2))
-    else:
-        return 0
-
-
-gamegrid = GameGrid()
-
-def playGame(unit):
-    gamegrid.init_matrix()
-    gamegrid.update_grid_cells()
-
-    moves = ['up', 'down', 'left', 'right']
-
-    illegal_moves_tried = 0
-
-    state = 'not over'
-    while state == 'not over':
-#flattened = np.array([np.array(gamegrid.matrix).flatten()])
-        data = np.zeros((16,12))
-        for i,cell in enumerate(np.array(gamegrid.matrix).flatten()):
-            data[i][cellToIndex(cell)] = 1.0
-        
-        flattened = np.expand_dims(data.flatten(), axis=0)
-
-        result = unit.model.predict(x=flattened)[0]
-        indices = np.argsort(result)[:2]
-
-        res = 'nomove'
-        while res == 'nomove':
-            nextMove = moves[indices[0]]
-            (matrix, res) = gamegrid.makeMove(nextMove)
-            if res == 'nomove':
-                illegal_moves_tried += 1
-                indices = np.delete(indices, 0)
-            if len(indices) == 0:
-                res = 'stuck'
-
-        if res == 'win' or res == 'lose' or res == 'stuck':
-            max_cell = max([max(sub) for sub in gamegrid.history_matrixs[len(gamegrid.history_matrixs)-1]])
-            unit.score = calcScore(res, gamegrid.history_matrixs, max_cell, illegal_moves_tried)
-            unit.max_cell = max(unit.max_cell, max_cell)
-            return (res, unit.score)
 
 def createModel(layers):
     initializer = RandomUniform(minval=-1.0, maxval=+1.0, seed=None)
 
     model = Sequential()
-    model.add(Dense(layers[0], activation='relu', kernel_initializer=initializer, bias_initializer=initializer, input_shape=(16*12,)))
+    model.add(Dense(layers[0], activation='relu', kernel_initializer=initializer, bias_initializer=initializer, input_shape=(16,)))
     #model.add(Dropout(rate=0.9))
     for layer in layers[1:]:
         model.add(Dense(layer, activation='relu', kernel_initializer=initializer, bias_initializer=initializer))
@@ -82,11 +38,7 @@ def generateFirstPopulation(count):
     print("Generating {} units in the first Generation".format(count))
     units = np.array([])
     for i in range(count):
-        layers = np.array([32])
-        """layers = np.array([])
-        layerCount = random.randint(1, 5)
-        for layer in range(1,layerCount+1):
-            layers = np.append(layers, [random.randint(64, 512)])"""
+        layers = np.array([16])
         #print(layers)
         model = createModel(layers.astype(int))
 
@@ -96,20 +48,10 @@ def generateFirstPopulation(count):
         units = np.append(units, [unit])
     return units
 
-def runGeneration(units, num_games):
-    for a,unit in enumerate(units):
-        unit.max_cell = 0
-        total_score = 0
-        for _ in range(num_games):
-            (result, score) = playGame(unit)
-            total_score += score
-        unit.score = total_score / num_games
-        print("Unit {} Game Result: {} mean_score: {}, max_cell:{}".format(a, result, unit.score, unit.max_cell))
-
 def calcScore(result, history_matrixs, max_cell, illegal_moves_tried):
     move_count = len(history_matrixs)
 
-    s = (move_count - illegal_moves_tried) * cellToIndex(max_cell)
+    s = (move_count - illegal_moves_tried)
     if result == 'win':
         s += 10000000
     return s
@@ -162,11 +104,73 @@ def mutate(unit, mutation_chance):
     
     return unit
 
+
+
+
+
+
+
+gamegrid = GameGrid()
+
+def playGame(unit, headless=False):
+    game = Game()
+
+    if not headless:
+        gamegrid.update_grid_cells(game.matrix)
+
+    moves = ['up', 'down', 'left', 'right']
+
+    illegal_moves_tried = 0
+
+    state = 'not over'
+    while state == 'not over':
+        data = np.zeros((4, 4))
+        normalize_factor = np.max(game.matrix)
+        for i in range(4):
+            for j in range(4):
+                data[i][j] = game.matrix[i][j] / normalize_factor 
+        #print(data)
+        
+        flattened = np.expand_dims(data.flatten(), axis=0)
+
+        result = unit.model.predict(x=flattened)[0]
+        indices = np.argsort(result)[:2]
+
+        res = 'nomove'
+        while res == 'nomove':
+            nextMove = moves[indices[0]]
+            (matrix, res) = game.makeMove(nextMove)
+            if res == 'nomove':
+                illegal_moves_tried += 1
+                indices = np.delete(indices, 0)
+            if len(indices) == 0:
+                res = 'stuck'
+
+        if not headless:
+            gamegrid.update_grid_cells(game.matrix)
+
+        if res == 'win' or res == 'lose' or res == 'stuck':
+            max_cell = max([max(sub) for sub in game.history_matrixs[len(game.history_matrixs)-1]])
+            unit.score = calcScore(res, game.history_matrixs, max_cell, illegal_moves_tried)
+            unit.max_cell = max(unit.max_cell, max_cell)
+            return (res, unit.score)
+
+def runGeneration(units, num_games):
+    for a,unit in enumerate(units):
+        unit.max_cell = 0
+        total_score = 0
+        for _ in range(num_games):
+            (result, score) = playGame(unit)
+            total_score += score
+        unit.score = total_score / num_games
+        print("Unit {} Game Result: {} mean_score: {}, max_cell:{}".format(a, result, unit.score, unit.max_cell))
+
+
 def optimize():
-    population = generateFirstPopulation(25)
+    population = generateFirstPopulation(20)
     for i in range(60):
         print("Generation: {}".format(i))
-        runGeneration(population, 2)
+        runGeneration(population, 20)
 
         sortByScore = sorted(population, key=lambda x: x.score, reverse=True)
         
