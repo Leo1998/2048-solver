@@ -3,13 +3,14 @@ from puzzle import *
 import logic
 import random
 import time
+from threading import Thread
 import copy
 import math
 
 import numpy as np
 
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout
+from tensorflow.keras.layers import Dense, Dropout, Flatten, Conv2D
 from tensorflow.keras.initializers import RandomUniform
 
 class Unit(object):
@@ -20,16 +21,13 @@ class Unit(object):
     def __str__(self): return 'Unit(score: {}, max_cell: {})'.format(score, max_cell)
 
 
-def createModel(layers):
+def createModel():
     initializer = RandomUniform(minval=-1.0, maxval=+1.0, seed=None)
 
     model = Sequential()
-    model.add(Dense(layers[0], activation='relu', kernel_initializer=initializer, bias_initializer=initializer, input_shape=(16,)))
-    #model.add(Dropout(rate=0.9))
-    for layer in layers[1:]:
-        model.add(Dense(layer, activation='relu', kernel_initializer=initializer, bias_initializer=initializer))
-        #model.add(Dropout(rate=0.9))
 
+    model.add(Conv2D(16, (3, 3), padding="valid", kernel_initializer=initializer, bias_initializer=initializer, input_shape=(4,4,1)))
+    model.add(Flatten())
     model.add(Dense(4, activation='softmax', kernel_initializer=initializer, bias_initializer=initializer))
 
     return model
@@ -38,9 +36,9 @@ def generateFirstPopulation(count):
     print("Generating {} units in the first Generation".format(count))
     units = np.array([])
     for i in range(count):
-        layers = np.array([16])
+        #layers = np.array([16])
         #print(layers)
-        model = createModel(layers.astype(int))
+        model = createModel()
 
         unit = Unit()
         unit.model = model
@@ -95,7 +93,7 @@ def mutate(unit, mutation_chance):
             
             for i,w in enumerate(weight_array):
                 if (random.random() < mutation_chance):
-                    weight_array[i] += random.uniform(-1, +1)
+                    weight_array[i] += random.uniform(-.1, +.1)
             
             weight_array.reshape(save_shape)
             new_weights_for_layer.append(weight_array)
@@ -110,12 +108,12 @@ def mutate(unit, mutation_chance):
 
 
 
-gamegrid = GameGrid()
 
 def playGame(unit, headless=False):
     game = Game()
 
     if not headless:
+        gamegrid = GameGrid()
         gamegrid.update_grid_cells(game.matrix)
 
     moves = ['up', 'down', 'left', 'right']
@@ -131,9 +129,9 @@ def playGame(unit, headless=False):
                 data[i][j] = game.matrix[i][j] / normalize_factor 
         #print(data)
         
-        flattened = np.expand_dims(data.flatten(), axis=0)
+        data = np.expand_dims(data, axis=0)
 
-        result = unit.model.predict(x=flattened)[0]
+        result = unit.model(data)[0]
         indices = np.argsort(result)[:2]
 
         res = 'nomove'
@@ -153,17 +151,37 @@ def playGame(unit, headless=False):
             max_cell = max([max(sub) for sub in game.history_matrixs[len(game.history_matrixs)-1]])
             unit.score = calcScore(res, game.history_matrixs, max_cell, illegal_moves_tried)
             unit.max_cell = max(unit.max_cell, max_cell)
+            if not headless:
+                gamegrid.close()
             return (res, unit.score)
 
+def chunks(l, n):
+    for i in range(0, len(l), n):
+        yield l[i:i + n]
+
 def runGeneration(units, num_games):
-    for a,unit in enumerate(units):
-        unit.max_cell = 0
-        total_score = 0
-        for _ in range(num_games):
-            (result, score) = playGame(unit)
-            total_score += score
-        unit.score = total_score / num_games
-        print("Unit {} Game Result: {} mean_score: {}, max_cell:{}".format(a, result, unit.score, unit.max_cell))
+    threads = []
+
+    def runChunk(c):
+        for unit in c:
+            runUnit(unit, num_games)
+
+    for chunk in chunks(units, 5):
+        thread = Thread(target=runChunk, args=[chunk])
+        thread.start()
+        threads.append(thread)
+
+    for thread in threads:
+        thread.join()
+        
+def runUnit(unit, num_games):
+    unit.max_cell = 0
+    total_score = 0
+    for _ in range(num_games):
+        (result, score) = playGame(unit, headless=True)
+        total_score += score
+    unit.score = total_score / num_games
+    print("Unit Game Result: {} mean_score: {}, max_cell:{}".format(result, unit.score, unit.max_cell))
 
 
 def optimize():
@@ -192,11 +210,10 @@ def optimize():
             offspring = breed(mum, dad, crossover_ratio)
 
             # mutation chance is random in the bounds of [almost healthy, full retard)
-            mutation_chance = random.uniform(0.005, 0.3)
+            mutation_chance = random.uniform(0.01, 0.4)
 
             mutate(offspring, mutation_chance)
 
             population = np.append(population, [offspring])
 
 optimize()
-gamegrid.close()
